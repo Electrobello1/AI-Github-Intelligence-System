@@ -1,0 +1,22 @@
+# Default ignored files
+
+__pycache__/
+
+
+# =========================
+# Virtual environments
+# =========================
+venv/
+
+
+# =========================
+# IDEs (PyCharm / VSCode)
+# =========================
+.idea/
+
+# =========================
+# Testing / Coverage
+# =========================
+.pytest_cache/
+
+
