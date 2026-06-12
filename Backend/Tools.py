@@ -3,6 +3,10 @@ import requests
 import logging
 import time
 from cache import get_cache, set_cache
+
+import base64
+import re
+
 TIMEOUT = 5
 MAX_RETRIES = 3
 BACKOFF_FACTOR = 2
@@ -50,43 +54,7 @@ def safe_get(url: str):
     logging.error("All retries failed")
     return None
 
-def read_github_repo(repo_url: str):
-    cache_key = f"readme:{repo_url}"
 
-    cached = get_cache(cache_key)
-    if cached:
-        logging.info("README cache hit")
-        return cached
-
-    try:
-        parts = repo_url.replace("https://github.com/", "").split("/")
-
-        if len(parts) < 2:
-            return "No README found"
-
-        owner, repo = parts[0], parts[1]
-
-        url = f"https://api.github.com/repos/{owner}/{repo}/readme"
-
-        res = safe_get(url)
-
-        if not res:
-            return "No README found"
-
-        try:
-            import base64
-            readme = base64.b64decode(res.json()["content"]).decode("utf-8")
-
-            # 💾 cache processed result
-            set_cache(cache_key, readme)
-
-            return readme
-
-        except Exception:
-            return "No README found"
-
-    except Exception:
-        return "No README found"
 
 def get_repo_metadata(repo_url: str):
     try:
@@ -126,7 +94,45 @@ def extract_title(readme):
             return line.replace("#", "").strip()
     return "Untitled Project"
 
-import re
+
+
+def read_github_repo(repo_url: str):
+    cache_key = f"readme:{repo_url}"
+
+    cached = get_cache(cache_key)
+    if cached:
+        logging.info("README cache hit")
+        return cached
+
+    try:
+        parts = repo_url.replace("https://github.com/", "").split("/")
+
+        if len(parts) < 2:
+            return "No README found"
+
+        owner, repo = parts[0], parts[1]
+
+        url = f"https://api.github.com/repos/{owner}/{repo}/readme"
+
+        res = safe_get(url)
+
+        if not res:
+            return "No README found"
+
+        try:
+
+            readme = base64.b64decode(res.json()["content"]).decode("utf-8")
+
+            # 💾 cache processed result
+            set_cache(cache_key, readme)
+
+            return readme
+
+        except Exception:
+            return "No README found"
+
+    except Exception:
+        return "No README found"
 
 def extract_summary(readme):
     if not readme:
@@ -149,7 +155,7 @@ def extract_summary(readme):
 
     summary = []
     length = 0
-    MAX_LEN = 400
+    MAX_LEN = 1000
 
     for s in sentences:
         if length + len(s) > MAX_LEN:

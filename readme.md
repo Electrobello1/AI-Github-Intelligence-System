@@ -13,6 +13,61 @@ The system combines **agentic AI reasoning + production-grade backend engineerin
 
 ---
 
+## 🌐 Live Deployment
+
+This project is deployed using Render with separate frontend and backend services.
+
+- **Frontend (Streamlit UI):**  
+https://ai-github-intelligence-system-front-end.onrender.com
+
+- **Backend (FastAPI):**  
+ https://ai-github-intelligence-system.onrender.com
+
+---
+
+## ⚠️ Important: Backend Cold Start (Render Free Tier)
+
+The backend is hosted on Render’s free tier, which means it may go to **sleep after periods of inactivity**.
+
+When this happens:
+
+- The first request may take **30–60 seconds** to respond
+- You may see messages like:
+  - “Server is starting or temporarily unavailable”
+  - `502 Bad Gateway`
+  - Request timeout errors
+
+---
+
+## 🔄 How to Wake the Backend
+
+If the backend is asleep, simply  this URLs to wake it up:
+
+ 
+- https://ai-github-intelligence-system.onrender.com 
+
+
+Once accessed, the backend will start up and subsequent requests will be fast.
+
+---
+
+## 💡 Why This Happens
+
+Render free services spin down after periods of inactivity to save resources. This is expected behavior and not a bug in the application.
+
+---
+
+## 🚀 Recommended Usage
+
+For the best experience:
+
+1. Open the **backend URL first** (to wake it up)
+2. Then open the **frontend UI**
+3. Use the application normally
+
+
+
+
 ## 🚀 System Architecture
 
 ```text

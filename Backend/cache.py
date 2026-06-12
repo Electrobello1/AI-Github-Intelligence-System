@@ -1,5 +1,6 @@
 import time
 
+
 # simple in-memory cache
 _cache = {}
 
@@ -26,3 +27,4 @@ def get_cache(key: str):
 def set_cache(key: str, value, ttl: int = DEFAULT_TTL):
     expiry = time.time() + ttl
     _cache[key] = (value, expiry)
+

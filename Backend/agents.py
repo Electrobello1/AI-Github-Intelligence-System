@@ -6,9 +6,11 @@ from Tools import (
     extract_summary,
     extract_tags
 )
+
 from model import generate_llm_response
 from state import A3State
 from database import SessionLocal, AgentTrace
+
 
 def repo_analyzer(state: A3State):
     db = SessionLocal()
@@ -120,7 +122,38 @@ def quality_agent(state: A3State):
 
     return output
 
+def ingest_repository(repo_url, session, db):
 
+    # 1. Get README
+    readme = read_github_repo(repo_url)
+
+    # 2. Generate summary ONCE
+    summary_prompt = f"""
+Analyze this GitHub repository README.
+
+README:
+{readme}
+
+Provide:
+1. Repository purpose and title
+2. Main technologies
+3. Key features
+4. Installation approach
+5. Important observations
+6. Author and license
+
+Keep summary under 300 words.
+"""
+
+    llm_summary = generate_llm_response(summary_prompt)
+
+    # 3. Store everything
+    session.readme = readme
+    session.llm_summary = llm_summary
+
+    db.commit()
+
+    return session
 def llm_enrichment_agent(state):
 
     #
@@ -137,14 +170,13 @@ def llm_enrichment_agent(state):
     # =========================
 
     title = state.get("title", "")
-    summary = state.get("summary", "")
+    llm_summary = state.get("llm_summary", "")
     tags = state.get("tags", [])
     quality = state.get("quality_score", 0)
     stars = state.get("stars", 0)
     language = state.get("language", "")
     missing_sections = state.get("missing_sections", [])
     review_feedback = state.get("review_feedback", {})
-    readme = state.get("readme", "")
     forks = state.get("forks", 0)
     status=state.get("status","")
     prev_issue_count=state.get("prev_issue_count",0)
@@ -169,7 +201,7 @@ TITLE:
 {title}
 
 SUMMARY:
-{summary}
+{llm_summary}
 
 TAGS:
 {tags}
@@ -192,8 +224,7 @@ MISSING SECTIONS:
 REVIEW FEEDBACK:
 {review_feedback}
 
-README:
-{readme[:4000]}
+
 
 STATUS:
 {status}

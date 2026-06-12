@@ -1,32 +1,125 @@
 import requests
+from requests.exceptions import RequestException
 import streamlit as st
-BASE_URL = "http://localhost:8000"
+import time
+import os
+from dotenv import load_dotenv
+load_dotenv()
+BASE_URL = os.getenv("BASE_URL")
+#BASE_URL = "http://localhost:8000"
 
+# -----------------------------------
+# AUTH
+# -----------------------------------
+def warmup_backend():
 
+        try:
+            r = requests.get(f"{BASE_URL}/health", timeout=5)
+            if r.status_code == 200:
+                return True
+        except:
+            pass
+        time.sleep(3)
+# -----------------------------------
+# AUTH
 
 # -----------------------------------
 # AUTH
 # -----------------------------------
 def login(email, password):
 
-    return requests.post(
-        f"{BASE_URL}/login",
-        json={
-            "email": email,
-            "password": password
-        }
-    )
+    for i in range(3):
 
+        try:
+            response = requests.post(
+                f"{BASE_URL}/login",
+                json={
+                    "email": email,
+                    "password": password
+                },
+                timeout=10
+            )
 
+            # Success or invalid credentials
+            if response.status_code in [200, 401]:
+                return response
+
+            # Too many requests
+            if response.status_code == 429:
+                time.sleep(5)
+                continue
+
+            # Temporary server issues
+            if response.status_code in [500, 502, 503, 504]:
+                time.sleep(2 ** i)
+                continue
+
+            # Any other response
+            return response
+
+        except requests.exceptions.RequestException:
+            time.sleep(2 ** i)
+
+    # final fallback
+    class FakeResponse:
+        status_code = 503
+        text = "server unavailable"
+
+        def json(self):
+            return {
+                "detail": "server unavailable"
+            }
+
+    return FakeResponse()
+# =========================================================
+# REGISTER FUNCTION (SAME LOGIC AS LOGIN)
+# =========================================================
 def register(email, password):
 
-    return requests.post(
-        f"{BASE_URL}/register",
-        json={
-            "email": email,
-            "password": password
-        }
-    )
+    for i in range(3):
+
+        try:
+            response = requests.post(
+                f"{BASE_URL}/register",
+                json={
+                    "email": email,
+                    "password": password
+                },
+                timeout=10
+            )
+
+            # Success or email already exists
+            if response.status_code in [200, 409]:
+                return response
+
+            # Too many requests
+            if response.status_code == 429:
+                time.sleep(5)
+                continue
+
+            # Temporary server issues
+            if response.status_code in [500, 502, 503, 504]:
+                time.sleep(2 ** i)
+                continue
+
+            # Any other response
+            return response
+
+        except RequestException:
+            time.sleep(2 ** i)
+
+    # final fallback
+    class FakeResponse:
+        status_code = 503
+        text = "server unavailable"
+
+        def json(self):
+            return {
+                "detail": "server unavailable"
+            }
+
+    return FakeResponse()
+
 
 
 # -----------------------------------

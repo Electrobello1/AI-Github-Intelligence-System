@@ -42,6 +42,11 @@ class SessionData(Base):
     attempts=Column(Integer)
     confidence=Column(Integer)
     prev_issue_count=Column(Integer)
+    language=Column(Text)
+    missing_sections=Column(Text)
+    readme=Column(Text)
+    llm_summary=Column(Text)
+
 
 
 
@@ -63,7 +68,11 @@ def save_session(db, data, user):
         status=data["status"],
         attempts=data["attempts"],
         confidence=data["confidence"],
-        prev_issue_count=data["prev_issue_count"]
+        prev_issue_count=data["prev_issue_count"],
+        language=data["language"],
+        missing_sections=data["missing_sections"],
+        readme=data["readme"],
+        llm_summary=data["llm_summary"]
     )
 
     try:

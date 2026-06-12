@@ -1,56 +1,45 @@
 from datetime import datetime, timedelta
 import os
+
 from jose import JWTError, jwt
-
 from passlib.context import CryptContext
-
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from dotenv import load_dotenv
+
 # =========================
 # CONFIG
 # =========================
-from dotenv import load_dotenv
-from datetime import timedelta
-
 load_dotenv()
+
 SECRET_KEY = os.getenv("SECRET_KEY")
 REFRESH_SECRET_KEY = os.getenv("REFRESH_SECRET_KEY")
 
-REFRESH_EXPIRE_DAYS = 7
-
-
-
 ALGORITHM = "HS256"
 
-ACCESS_TOKEN_EXPIRE_MINUTES = 1
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+REFRESH_EXPIRE_DAYS = 7
 
 security = HTTPBearer()
+
 # =========================
 # PASSWORD HASHING
 # =========================
-pwd_context = CryptContext(
-    schemes=["argon2"]
-)
+pwd_context = CryptContext(schemes=["argon2"])
+
+
 def hash_password(password: str):
     return pwd_context.hash(password)
 
 
-def verify_password(
-    plain_password,
-    hashed_password
-):
-    return pwd_context.verify(
-        plain_password,
-        hashed_password
-    )
+def verify_password(plain_password: str, hashed_password: str):
+    return pwd_context.verify(plain_password, hashed_password)
 
 
 # =========================
-# JWT TOKEN
+# ACCESS TOKEN
 # =========================
-
 def create_access_token(data: dict):
-
     to_encode = data.copy()
 
     expire = datetime.utcnow() + timedelta(
@@ -58,7 +47,8 @@ def create_access_token(data: dict):
     )
 
     to_encode.update({
-        "exp": expire
+        "exp": expire,
+        "type": "access"
     })
 
     return jwt.encode(
@@ -67,22 +57,35 @@ def create_access_token(data: dict):
         algorithm=ALGORITHM
     )
 
-def create_refresh_token(data: dict):
 
+# =========================
+# REFRESH TOKEN
+# =========================
+def create_refresh_token(data: dict):
     to_encode = data.copy()
 
-    expire = datetime.utcnow() + timedelta(days=REFRESH_EXPIRE_DAYS)
+    expire = datetime.utcnow() + timedelta(
+        days=REFRESH_EXPIRE_DAYS
+    )
 
-    to_encode.update({"exp": expire})
+    to_encode.update({
+        "exp": expire,
+        "type": "refresh"
+    })
 
     return jwt.encode(
         to_encode,
         REFRESH_SECRET_KEY,
-        algorithm="HS256"
+        algorithm=ALGORITHM
     )
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
 
+# =========================
+# CURRENT USER (ACCESS TOKEN)
+# =========================
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
     token = credentials.credentials
 
     try:
@@ -91,6 +94,9 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             SECRET_KEY,
             algorithms=[ALGORITHM]
         )
+
+        if payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="Invalid token type")
 
         user_id = payload.get("user_id")
         email = payload.get("sub")

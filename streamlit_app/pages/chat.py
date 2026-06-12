@@ -66,7 +66,8 @@ with st.sidebar:
                     "confidence": data.get("confidence", 0),
                     "review_feedback": data.get("review_feedback", {}),
                     "prev_issue_count": data.get("prev_issue_count", 0),
-                    "attempts": data.get("attempts", 1)
+                    "attempts": data.get("attempts", 1),
+                    "language":data.get("language", "")
                 }
 
                 st.success("Analysis complete")
@@ -78,7 +79,7 @@ with st.sidebar:
     st.markdown("---")
 
     # -----------------------------
-    # SESSION HISTORY (FIXED)
+    # SESSION HISTORY
     # -----------------------------
     st.subheader("Chats")
 
@@ -114,7 +115,10 @@ with st.sidebar:
                     "confidence": data.get("confidence", 0),
                     "review_feedback": data.get("review_feedback", {}),
                     "prev_issue_count": data.get("prev_issue_count", 0),
-                    "attempts": data.get("attempts", 1)
+                    "attempts": data.get("attempts", 1),
+                    "language" :data.get("language", ""),
+                    "missing_sections":data.get("missing_sections", []),
+                     "llm_summary": data.get("llm_summary", ""),
                 }
 
                 st.rerun()
@@ -173,18 +177,20 @@ if repo_data:
     st.subheader("📦 Repository Overview")
     st.write(repo_data.get("summary", ""))
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4,col5,col6 = st.columns(6)
 
     col1.metric("⭐ Stars", repo_data.get("stars", 0))
     col2.metric("🍴 Forks", repo_data.get("forks", 0))
     col3.metric("🧠 Quality", repo_data.get("quality_score", 0))
     col4.metric("🎯 Confidence", repo_data.get("confidence", 0))
+    col5.metric(" language", repo_data.get("language", ""))
 
     st.write("**Tags:** " + ", ".join(repo_data.get("tags", [])))
 
-    st.markdown("---")
 
     feedback = repo_data.get("review_feedback", {})
+
+
 
     if feedback is None:
         feedback = {}

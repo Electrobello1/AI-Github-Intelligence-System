@@ -19,6 +19,7 @@ class A3State(TypedDict):
     prev_issue_count: int
     user_question: str
     chat_history:str
+    llm_summary:str
 
 def ensure_defaults(state: dict):
         return {

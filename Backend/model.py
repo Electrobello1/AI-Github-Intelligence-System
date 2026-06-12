@@ -10,7 +10,7 @@ OLLAMA_URL = "https://ollama.com/api/generate"
 def generate_llm_response(prompt: str):
 
     payload = {
-        "model": "qwen3-vl:235b-instruct-cloud",
+        "model": "qwen3-coder-next:cloud",
         "prompt": prompt,
         "stream": False
     }
@@ -34,4 +34,3 @@ def generate_llm_response(prompt: str):
 
     except Exception as e:
         return f"LLM Error: {str(e)}"
-

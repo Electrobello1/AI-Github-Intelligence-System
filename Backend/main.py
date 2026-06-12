@@ -6,10 +6,10 @@ import uvicorn
 from database import SessionData,User
 from database import  save_message,ChatMessage,get_recent_messages
 from agents import llm_enrichment_agent,update_conversation_summary
-
+from Tools import read_github_repo
 from fastapi import Depends
 
-from auth import get_current_user
+from auth import get_current_user,ALGORITHM
 
 from graph import build_graph
 from database import (
@@ -23,10 +23,29 @@ from auth import (
     verify_password,
     create_access_token,create_refresh_token,REFRESH_SECRET_KEY
 )
+from fastapi.middleware.cors import CORSMiddleware
+import os
+from agents import ingest_repository
+
 # =========================
 # APP INIT
 # =========================
-app = FastAPI(title="A3 Multi-Agent System")
+app = FastAPI(title="Github Multi-Agent System")
+
+
+# Optional: load from environment for flexibility
+STREAMLIT_URL = os.getenv("STREAMLIT_URL", "http://localhost:8501")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        STREAMLIT_URL,
+        "http://localhost:8501",  # local dev fallback
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 app_graph = build_graph()
 
@@ -123,6 +142,8 @@ def sanitize_output(result: dict):
         "review_feedback": safe_get(result, "review_feedback", {}),
 
         "attempts": safe_get(result,"attempts", 0),
+        "missing_sections": safe_get(result, "missing_sections", []),
+
 
         "prev_issue_count": safe_get(result,"prev_issue_count", 0),
     }
@@ -132,6 +153,12 @@ def sanitize_output(result: dict):
 # MAIN ENDPOINT
 # =========================
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+# =========================
+# MAIN ENDPOINT
+# =========================
 @app.post("/analyze")
 def analyze_repo(
     request: RepoRequest,
@@ -139,52 +166,74 @@ def analyze_repo(
 ):
 
     request_id = str(uuid.uuid4())
-
     url = str(request.repo_url)
+
     validate_github_url(url)
+
+    db = SessionLocal()
 
     try:
         logging.info(f"[{request_id}] Processing repo: {url}")
 
+        # =========================
+        # 1. CREATE SESSION
+        # =========================
+        session = SessionData(
+            session_id=request_id,
+            user_id=user["user_id"],
+            repo_url=url
+        )
+
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+
+        # =========================
+        # 2. INGEST REPOSITORY (README + SUMMARY)
+        # =========================
+        session = ingest_repository(url, session, db)
+
+        # =========================
+        # 3. RUN GRAPH (LLM ENRICHMENT)
+        # =========================
         initial_state = {
             "repo_url": url,
-            "attempts": 0
+            "session_id": request_id,
+            "attempts": 0,
+            "readme": session.readme,
+            "summary": session.summary,
+            "llm_summary": session.llm_summary
         }
 
         result = app_graph.invoke(initial_state) or {}
 
         # =========================
-        # ✅ SAVE TO DATABASE HERE
+        # 4. UPDATE SESSION WITH GRAPH OUTPUT
         # =========================
-        db = SessionLocal()
+        session.summary = result.get("summary", session.summary)
+        session.title = result.get("title", "")
+        session.tags = ",".join(result.get("tags", []))
+        session.quality_score = result.get("quality_score", 0)
+        session.stars = result.get("stars", 0)
+        session.forks = result.get("forks", 0)
+        session.review_feedback = str(result.get("review_feedback", ""))
+        session.status = result.get("status", "unknown")
+        session.attempts = result.get("attempts", 0)
+        session.confidence = result.get("confidence", 0)
+        session.prev_issue_count = result.get("prev_issue_count", 0)
+        session.language = result.get("language", "unknown")
+        session.missing_sections = result.get("missing_sections", [])
+        session.llm_summary = result.get("llm_summary", session.llm_summary)
 
-        save_session(db, {
-            "user_id": user["user_id"],
-            "session_id": request_id,
-            "repo_url": url,
-            "summary": result.get("summary", ""),
-            "title": result.get("title", ""),
-            "tags": result.get("tags", []),
-            "quality_score": result.get("quality_score", 0),
-            "stars": result.get("stars", 0),
-            "forks": result.get("forks", 0),
-            "review_feedback": result.get("review_feedback", ""),
-            "status": result.get("status", "unknown"),
-            "attempts": result.get("attempts", 0),
-            "confidence": result. get("confidence",0),
-            "prev_issue_count": result.get("prev_issue_count", 0),
-        }, user)
         db.commit()
-        db.close()
 
         logging.info(f"[{request_id}] Saved session successfully")
-        logging.info(f"[{request_id}] Completed successfully")
 
         return {
-        "user_id": user["user_id"],
-        "session_id": request_id,
-        **sanitize_output(result)
-       }
+            "user_id": user["user_id"],
+            "session_id": request_id,
+            **sanitize_output(result)
+        }
 
     except Exception as e:
         logging.error(f"[{request_id}] Error: {str(e)}")
@@ -194,11 +243,12 @@ def analyze_repo(
             detail=f"Internal server error (ref: {request_id})"
         )
 
+    finally:
+        db.close()
 
 # =========================
 # CHAT / HITL ENDPOINT
 # =========================
-
 
 @app.post("/chat")
 def chat_with_repo(
@@ -220,10 +270,7 @@ def chat_with_repo(
         )
 
         if not session:
-            raise HTTPException(
-                status_code=404,
-                detail="Session not found"
-            )
+            raise HTTPException(status_code=404, detail="Session not found")
 
         # =========================
         # SAVE USER MESSAGE
@@ -237,7 +284,7 @@ def chat_with_repo(
         )
 
         # =========================
-        # GET RECENT MESSAGES
+        # GET CHAT HISTORY
         # =========================
         recent_messages = get_recent_messages(
             db,
@@ -246,9 +293,6 @@ def chat_with_repo(
             limit=15
         )
 
-        # =========================
-        # FORMAT RECENT HISTORY
-        # =========================
         recent_chat = "\n".join(
             f"{m.role}: {m.message}"
             for m in recent_messages
@@ -259,31 +303,31 @@ def chat_with_repo(
         # =========================
         llm_result = llm_enrichment_agent({
 
-            # Repo context
+            # Repo context (FROM DB ONLY)
             "summary": session.summary,
             "title": session.title,
             "tags": session.tags.split(",") if session.tags else [],
             "quality_score": session.quality_score,
             "stars": session.stars,
-            "review_feedback":session.review_feedback,
-            "status":session.status,
-            "prev_issue_count":session.prev_issue_count,
-            "confidence":session.confidence,
-            "forks":session.forks,
+            "forks": session.forks,
+            "review_feedback": session.review_feedback,
+            "status": session.status,
+            "confidence": session.confidence,
+            "prev_issue_count": session.prev_issue_count,
+            "language": session.language,
+            "missing_sections": session.missing_sections,
+            "readme": session.readme,
+            "llm_summary": session.llm_summary,
 
-
-            # 🧠 MEMORY
+            # MEMORY
             "conversation_summary": session.conversation_summary or "",
             "chat_history": recent_chat,
 
-            # User question
+            # USER QUERY
             "user_question": request.user_message
         })
 
-        response = llm_result.get(
-            "llm_response",
-            "No response generated"
-        )
+        response = llm_result.get("llm_response", "No response generated")
 
         # =========================
         # SAVE AI RESPONSE
@@ -297,8 +341,7 @@ def chat_with_repo(
         )
 
         # =========================
-        # AUTO UPDATE SUMMARY
-        # every 10 messages
+        # UPDATE CONVERSATION SUMMARY
         # =========================
         total_messages = db.query(ChatMessage).filter(
             ChatMessage.session_id == session.session_id,
@@ -306,16 +349,9 @@ def chat_with_repo(
         ).count()
 
         if total_messages % 10 == 0:
+            update_conversation_summary(db, session, recent_chat)
 
-            update_conversation_summary(
-                db,
-                session,
-                recent_chat
-            )
-
-        return {
-            "response": response
-        }
+        return {"response": response}
 
     finally:
         db.close()
@@ -357,7 +393,10 @@ def get_session_data(
         "forks": session.forks,
         "quality_score": session.quality_score,
         "tags": session.tags.split(","),
-        "review_feedback": session.review_feedback
+        "review_feedback": session.review_feedback,
+        "language": session.language,
+        "missing_sections": session.missing_sections,
+        "llm_summary": session.llm_summary
             if session.tags else [],
         "messages": [
             {
@@ -425,30 +464,24 @@ def login(request: LoginRequest):
 
     db = SessionLocal()
 
-    user = db.query(User).filter(
-        User.email == request.email
-    ).first()
+    user = db.query(User).filter(User.email == request.email).first()
 
     if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid credentials"
-        )
+    if not verify_password(request.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    if not verify_password(
-        request.password,
-        user.password_hash
-    ):
+    access_token = create_access_token({
+        "sub": user.email,
+        "user_id": user.id
+    })
 
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid credentials"
-        )
+    refresh_token = create_refresh_token({
+        "sub": user.email,
+        "user_id": user.id
+    })
 
-    access_token = create_access_token(data={"sub": user.email, "user_id": user.id})
-
-    refresh_token = create_refresh_token(data={"sub": user.email, "user_id": user.id})
     db.close()
 
     return {
@@ -458,34 +491,31 @@ def login(request: LoginRequest):
         "token_type": "bearer"
     }
 
-
 @app.post("/refresh")
 def refresh_token(data: RefreshRequest):
 
-    refresh_token = data.refresh_token
+    token = data.refresh_token
 
     try:
         payload = jwt.decode(
-            refresh_token,
+            token,
             REFRESH_SECRET_KEY,
-            algorithms=["HS256"]
+            algorithms=[ALGORITHM]
         )
+
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
 
         user_id = payload.get("user_id")
         email = payload.get("sub")
 
-        if user_id is None:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid refresh token"
-            )
+        if user_id is None or email is None:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-        new_access_token = create_access_token(
-            data={
-                "sub": email,
-                "user_id": user_id
-            }
-        )
+        new_access_token = create_access_token({
+            "sub": email,
+            "user_id": user_id
+        })
 
         return {
             "access_token": new_access_token,
@@ -495,7 +525,7 @@ def refresh_token(data: RefreshRequest):
     except JWTError:
         raise HTTPException(
             status_code=401,
-            detail="Refresh token expired"
+            detail="Refresh token expired or invalid"
         )
 # =========================
 # RUN SERVER
@@ -503,8 +533,5 @@ def refresh_token(data: RefreshRequest):
 
 if __name__ == "__main__":
     uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
+
     )
