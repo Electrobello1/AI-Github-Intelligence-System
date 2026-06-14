@@ -6,7 +6,7 @@ import uvicorn
 from database import SessionData,User
 from database import  save_message,ChatMessage,get_recent_messages
 from agents import llm_enrichment_agent,update_conversation_summary
-from Tools import read_github_repo
+
 from fastapi import Depends
 
 from auth import get_current_user,ALGORITHM
@@ -219,7 +219,7 @@ def analyze_repo(
         session.review_feedback = str(result.get("review_feedback", ""))
         session.status = result.get("status", "unknown")
         session.attempts = result.get("attempts", 0)
-        session.confidence = result.get("confidence", 0)
+        session.confidence = float(result.get("confidence", 0))
         session.prev_issue_count = result.get("prev_issue_count", 0)
         session.language = result.get("language", "unknown")
         session.missing_sections = result.get("missing_sections", [])

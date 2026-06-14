@@ -20,10 +20,7 @@ def warmup_backend():
         except:
             pass
         time.sleep(3)
-# -----------------------------------
-# AUTH
 
-# -----------------------------------
 # AUTH
 # -----------------------------------
 def login(email, password):

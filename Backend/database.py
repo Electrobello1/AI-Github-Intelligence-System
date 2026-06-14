@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, Integer, Text
+from sqlalchemy import create_engine, Column, String, Integer, Text,Float
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import DateTime
 from sqlalchemy.dialects.postgresql import JSONB
@@ -40,7 +40,7 @@ class SessionData(Base):
     review_feedback = Column(JSONB)
     status= Column(Text)
     attempts=Column(Integer)
-    confidence=Column(Integer)
+    confidence=Column(Float)
     prev_issue_count=Column(Integer)
     language=Column(Text)
     missing_sections=Column(Text)

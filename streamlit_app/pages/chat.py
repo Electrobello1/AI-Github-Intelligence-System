@@ -107,7 +107,7 @@ with st.sidebar:
                 st.session_state.messages = data["messages"]
 
                 st.session_state.repo_data = {
-                    "summary": data.get("summary", ""),
+                    #"summary": data.get("summary", ""),
                     "stars": data.get("stars", 0),
                     "forks": data.get("forks", 0),
                     "quality_score": data.get("quality_score", 0),
